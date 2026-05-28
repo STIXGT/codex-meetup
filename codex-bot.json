@@ -1,0 +1,3182 @@
+{
+  "name": "Aura-bot",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatwoot-events",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3968,
+        1872
+      ],
+      "id": "408713fb-1147-4faf-95bb-12a29c4ff255",
+      "name": "Webhook",
+      "webhookId": "YOUR_WEBHOOK_ID"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT sender, content\nFROM chat_history\nWHERE client_id = $1\nORDER BY created_at DESC\nLIMIT 10; -- Le damos los últimos 10 mensajes de memoria",
+        "options": {
+          "queryReplacement": "={{ $('Client Add or Update').item.json.id }}",
+          "replaceEmptyStrings": false
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        768,
+        1296
+      ],
+      "id": "a709016a-1c61-4aeb-9653-dc24e2fcaa4c",
+      "name": "Read History",
+      "alwaysOutputData": true,
+      "notesInFlow": false,
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "57bd6c6d-571c-4bf9-8314-3f80aa08ab9c",
+              "leftValue": "={{ ($json.body.event === 'message_created')\n&& ($json.body.conversation.messages[0].sender_type) === 'Contact' || $json.body.conversation.messages[0].sender_type === 'User'\n\n}}",
+              "rightValue": "incoming",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -3824,
+        1872
+      ],
+      "id": "aecda424-bd90-4f88-9462-a9be1c25129a",
+      "name": "Event Filter"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_history (client_id, sender, content)\nVALUES (\n  $1, \n  'human',\n  $2\n);",
+        "options": {
+          "queryReplacement": "={{ $json.sql_params }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -2848,
+        2080
+      ],
+      "id": "71b8b5ad-30b6-48a1-9073-c245deb902eb",
+      "name": "Add History User",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2320,
+        1120
+      ],
+      "id": "010580d8-c056-4afb-aa88-bbc185ce672f",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Client Add or Update').first().json.id }}",
+        "contextWindowLength": 0
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        2448,
+        1120
+      ],
+      "id": "45b69b35-795e-40c2-bb1f-61b885099978",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO clients (phone_number, first_name, last_name)\nVALUES ($1, $2, $3)\nON CONFLICT (phone_number) DO UPDATE\nSET \n    first_name = EXCLUDED.first_name,\n    last_name = EXCLUDED.last_name\nRETURNING id;",
+        "options": {
+          "queryReplacement": "={{ $json.sender_number }}, {{ $json.sender_firstname }}, {{ $json.sender_lastname }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -3232,
+        2080
+      ],
+      "id": "d680819c-c884-4316-b563-6899555fcdfb",
+      "name": "Owner Add or update Client",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Data Webhook').item.json.account_id }}/conversations/{{ $('Data Webhook').item.json.conversation_id }}/labels",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"labels\": [\"bot-off\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -2400,
+        2080
+      ],
+      "id": "d730d595-f0fb-4c09-88a9-5d8a1df61291",
+      "name": "Add Label Bot OFF",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=Eres el \"Router Neuronal\" de Florería Aura.\nTU ÚNICA FUNCIÓN: Analizar el mensaje del usuario y extraer datos estructurados con LÓGICA CONSERVADORA.\nNO debes redactar respuestas. Solo devuelve JSON.\n\nCONTEXTO:\n- Historial: {{ $json.formatted_history }}\n- Pedido Activo: {{ $json.formatted_order }}\n\nREGLAS CRÍTICAS DE DECISIÓN (Priority Chain):\n\n1. LA TRAMPA DEL \"QUIERO\":\n   - Si el usuario dice \"Quiero un ramo de...\", \"Busco rosas...\", \"Me gustaría comprar...\":\n   - ESTO ES \"INFO\", NO \"WANT_BUY\".\n   - RAZÓN: El usuario está *definiendo* el producto. Aún no sabe el precio total ni si hay stock. Aún no ha dicho \"Sí, confírmalo\".\n\n2. ANÁLISIS DEL HISTORIAL:\n   - Antes de marcar \"WANT_BUY\", verifica en el historial: ¿Ya se le dio el precio? ¿Ya se discutieron los detalles? .\n   - Si es el PRIMER mensaje sobre un producto nuevo, SIEMPRE es \"INFO\".\n\nCLASIFICACIÓN DE INTENCIONES:\n\n- \"HUMAN_INTERVENTION\":\n  Insultos, enojo evidente o pedir hablar con \"humano/dueña\".\n\n- \"INFO\": (Fase de Cotización y Diseño)\n  - El usuario describe qué quiere (\"Quiero 4 lirios\").\n  - Preguntas de precios, fotos, stock o dudas generales.\n  - El usuario está configurando su pedido pero NO ha dado la orden final de \"Hacerlo\" SIMPRE VERIFICA ESTA PARTE Y PREGUNTA.\n\n- \"WANT_BUY\": (Fase de Cierre Transaccional)\n  - Solo úsala en 2 casos estrictos:\n    A) CONFIRMACIÓN EXPLÍCITA: El usuario responde a una cotización previa con: \"Lo quiero\", \"Confirmo\", \"Générame la orden\", \"Está bien el precio\". REVISA SIEMPRE EL HISTORIAL ANTES DE LLEGAR A UNA CONCLUSION.\n    B) LOGÍSTICA: El usuario tiene un pedido YA EXISTENTE (ver Contexto Pedido Activo) y está dando datos de delivery/retiro.\n\n- \"DONT_UNDERSTAND\":\n  ÚNICAMENTE puedes ayudar con temas relacionados con: \n\t- Flores y arreglos florales \n\t- Productos y servicios de la floristería \n\t- Pedidos, entregas y consultas sobre flores \n\t- Cuidado de flores y plantas \n\t- Ocasiones especiales (bodas, cumpleaños, eventos) \n\t- Recomendaciones florales \n\tDEBES RECHAZAR AMABLEMENTE cualquier solicitud fuera de este alcance: \n\t- Programación, código o desarrollo \n\t- Temas académicos generales \n\t- Consejos médicos, legales o financieros \n\t- Cualquier otro tema no relacionado con flores o floristería de nuestro local.\n\n\n\nFORMATO DE SALIDA (JSON ESTRICTO):\n{\n  \"user_intent\": \"HUMAN_INTERVENTION\" | \"WANT_BUY\" | \"INFO\" | \"DONT_UNDERSTAND\" ,\n \"reasoning\": \"Explica por qué. Ej: 'Usuario pide producto pero no ha confirmado compra'\"\n}\n"
+            },
+            {
+              "content": "=Analiza la situación actual con estos datos:\n\nCONTEXTO 1 - HISTORIAL DE CHAT:\n{{ $json.formatted_history }}\n\nMENSAJE NUEVO DEL CLIENTE:\n\"{{ $('Client Message').first().json.message }}\""
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1200,
+        1296
+      ],
+      "id": "500e4627-196f-47c9-9aa1-a0789a29bda5",
+      "name": "AI Brain",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b97980a5-f17d-4c10-8bb3-ede22288b66d",
+                    "leftValue": "={{ $json.output[0].content[0].text.user_intent }}",
+                    "rightValue": "DONT_UNDERSTAND",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6268a616-b8bc-489b-8a0b-40f96669a43a",
+                    "leftValue": "={{ $json.output[0].content[0].text.user_intent }}",
+                    "rightValue": "INFO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c58e8256-b0d6-4bc0-b081-40d14dfd3059",
+                    "leftValue": "={{ $json.output[0].content[0].text.user_intent }}",
+                    "rightValue": "WANT_BUY",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "365f98a8-9c25-42b2-af9b-67e8953bfb5b",
+                    "leftValue": "={{ $json.output[0].content[0].text.user_intent }}",
+                    "rightValue": "HUMAN_INTERVENTION",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1504,
+        1280
+      ],
+      "id": "5158486c-7c83-44b5-bdc4-6121133ca6e0",
+      "name": "Intent Router"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1ca1f9d4-1f26-40b8-ac43-55e9941de3fe",
+              "leftValue": "={{ $('Get Active Order').first().json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1936,
+        1408
+      ],
+      "id": "7be437ab-5e4f-4580-856c-205fa879abca",
+      "name": "Check Order Exists"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Data Webhook').first().json.account_id }}/conversations/{{ $('Data Webhook').first().json.conversation_id }}/custom_attributes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"custom_attributes\": {\n    \"bot_state\": \"off\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2304,
+        1968
+      ],
+      "id": "bfc8fd95-181f-48bb-afee-33ada7183684",
+      "name": "Change Bot State",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Data Webhook').first().json.account_id }}/conversations/{{ $('Data Webhook').first().json.conversation_id }}/labels",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"labels\": [\"atencion_inmediata\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2496,
+        1968
+      ],
+      "id": "8f3c0d5d-b708-4974-8f5d-a1646c98ce6e",
+      "name": "Add Label Immediate Attention",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "get",
+        "documentURL": "https://docs.google.com/document/d/YOUR_GOOGLE_DOC_ID/edit?usp=sharing"
+      },
+      "type": "n8n-nodes-base.googleDocsTool",
+      "typeVersion": 2,
+      "position": [
+        2576,
+        1120
+      ],
+      "id": "fe1448b1-b971-484f-b985-a94502143751",
+      "name": "Get Aura Info",
+      "credentials": {
+        "googleApi": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Inventario_Aura",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Sheet', ``, 'string') }}"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        2704,
+        1120
+      ],
+      "id": "65626eb4-9d37-4592-8681-5b912849e764",
+      "name": "Get Aura Data",
+      "credentials": {
+        "googleApi": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=Eres Aura, la asistente experta , cálida y atenta de Florería Aura 🌹.\nTU OBJETIVO: Sintetizar información y transformar datos crudos en respuestas amables, naturales y breves.\n\nTUS FUENTES DE VERDAD:\n1. FUENTE A (Catálogo/Docs): Info general.\n2. FUENTE B (Base de Datos): La verdad absoluta sobre el pedido.\n\nPROTOCOLO DE RESPUESTA:\n\nPASO 1: ANÁLISIS DE FUENTE\n- Si el usuario pregunta por \"Mi Pedido\", IGNORA la Fuente A y céntrate totalmente en la FUENTE B.\n\nPASO 2: REGLA DE SUPRESIÓN (No ser molestos)\n- Si estás respondiendo detalles del pedido, NO agregues al final \"¿Te recuerdo que tienes un pedido?\", porque ya estamos hablando de eso.\n\nPASO 3: NARRATIVA DE DATOS (Humanización - CRÍTICO)\nNUNCA devuelvas una lista tipo \"Campo: Valor\". Transforma los datos en oraciones fluidas.\n\nGuía de Traducción:\n- ID: No digas \"ID: 2\". Di: \"Se trata de tu pedido #2\".\n- ESTADO 'validando_pedido': Tradúcelo como \"Actualmente lo estamos validando en bodega ⏳\".\n- ESTADO 'aprobado': Tradúcelo como \"¡Ya está aprobado y en preparación! ✅\".\n- PRODUCTO: Descríbelo con gusto. Ej: \"Incluye el ramo de [Nombre Producto] 🌹\".\n- MÉTODO 'Por definir': Di \"Aún nos falta que nos confirmes si prefieres envío a domicilio o retiro en local\".\n\nPASO 4: ESTRUCTURA FINAL\n- Saluda brevemente si es necesario.\n- Párrafo 1: La respuesta directa narrada (los detalles del pedido).\n- Párrafo 2: Pregunta de cierre o siguiente paso lógico.\n\nEJEMPLO DE RESPUESTA IDEAL:\n- Siempre coloca los fields en ingles.\nmessage:\n\"¡Claro! Te cuento sobre tu pedido #2. 📄\nEs el pedido por las 12 Rosas Lindas 🌹. Actualmente está en proceso de validación ⏳ mientras verificamos el stock.\nPor ahora, solo nos falta definir la entrega. ¿Te gustaría que sea delivery o pasas por el local?\""
+            },
+            {
+              "content": "=CONSULTA DEL CLIENTE: \"{{ $('Client Message').first().json.message }}\"\n\n--- FUENTE A: INFO GENERAL ---\nSTATUS: {{ $('Info AI').item.json.output.includes(\"PERSONAL_DATA\") ? \"IGNORAR_FUENTE_A\" : \"DISPONIBLE\" }}\nCONTENIDO: {{ $('Info AI').item.json.output }}\n\n--- FUENTE B: BASE DE DATOS (Prioridad Alta) ---\nINTENCIÓN: {{ $('AI Brain').first().json.output[0].content[0].text.user_intent }}\nRAZONAMIENTO: {{ $('AI Brain').first().json.output[0].content[0].text.reasoning }}\n\nDATOS_PEDIDO_ACTIVO (Usar para responder detalles):\n{{ JSON.stringify($('History Code').first().json.formatted_order).replace(/_/g, ' ').replace(/\"/g, '') }}\n\nHistorial del Cliente:\n{{ $('History Code').first().json.formatted_history }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 300,
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        2912,
+        992
+      ],
+      "id": "3b69083f-9eb4-4d5f-9383-40aaf57bc758",
+      "name": "Info Message",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Eres Aura, la asistente experta DE la FLORIA AURA.\nSOLICITUD DEL USUARIO PARA ANÁLISIS:\n\"{{ $('Client Message').first().json.message }}\"\n\n",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Eres el \"Agente de Inteligencia y Recuperación\" de Florería Aura.\nTU MISIÓN: Clasificar la intención del usuario y ejecutar la herramienta correcta para extraer datos.\n\nREGLAS DE SELECCIÓN DE HERRAMIENTAS (Lógica Estricta):\n\n1. HERRAMIENTA: `Get Aura Data` (Excel/Catálogo)\n   - Úsala ÚNICAMENTE si el usuario busca: Flores específicas (rosas, lirios), Ramos, Precios, Disponibilidad/Stock o Catálogo de productos.\n   - PROHIBIDO usar esta herramienta para buscar personas, historia o textos descriptivos.\n - SOLO EXISTEN 2 HOJAS DE CONSULTA QUE SON FLORES Y RAMOS PARA QUE CONSULTES EL CATALOGO, NO EXISTEN OTRAS HOJAS, ASI QUE NO INTENTES CONSULTAR HOJAS QUE NO EXISTEN.\n\n2. HERRAMIENTA: `Get Aura Info` (Docs/Conocimiento)\n   - Úsala para TODO lo que no sea venta de productos.\n   - Incluye: Horarios, Ubicación, Métodos de Pago.\n   - Incluye: Historia de la marca, \"Vendedor Estrella\", Quién es la dueña, Personal, Curiosidades o Políticas de la empresa.\n\n3. USO HÍBRIDO:\n   - Si pide una combinación (Ej: \"Precio de rosas y quién es el mejor vendedor\") -> EJECUTA AMBAS.\n\nREGLAS DE FORMATO DE SALIDA:\nCuando recibas la respuesta:\n- NO devuelvas JSON crudo.\n- Procesa la data en un bloque de texto legible.\n- Si usaste Excel: Lista los productos con guiones (Nombre - Precio).\n- Si usaste Docs: Resume la respuesta en 1-2 frases claras extraídas del texto.\n- Si la herramienta falla o devuelve vacío, escribe: \"DATA_NOT_FOUND\"."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        2448,
+        896
+      ],
+      "id": "60a5de0f-da98-4441-bdc9-6441c30db685",
+      "name": "Info AI",
+      "alwaysOutputData": false,
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_history (client_id, sender, content)\nVALUES (\n  $1, \n  'bot',\n  $2\n);",
+        "options": {
+          "queryReplacement": "={{ $json.sql_params }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3392,
+        992
+      ],
+      "id": "205088d4-7762-4e8b-8c48-430360aac751",
+      "name": "Info Add History Bot",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Webhook').first().json.body.account.id }}/conversations/{{ $('Webhook').first().json.body.conversation.id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $('Info Message').item.json.output[0].content[0].text.message }}"
+            },
+            {
+              "name": "message_type",
+              "value": "outgoing"
+            },
+            {
+              "name": "private",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3568,
+        992
+      ],
+      "id": "9e517485-b94a-4e79-8275-b5e2112fe89d",
+      "name": "Info Send Message",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Webhook').first().json.body.account.id }}/conversations/{{ $('Webhook').first().json.body.conversation.id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "=¡Recibido! He notado que tu consulta requiere un toque más personalizado para que todo quede perfecto.\n\nHe avisado a una de nuestras asesoras humanas para que revise tu mensaje y te atienda personalmente en unos minutos. ¡Estás en las mejores manos! 🌹✨"
+            },
+            {
+              "name": "message_type",
+              "value": "outgoing"
+            },
+            {
+              "name": "private",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1952,
+        1968
+      ],
+      "id": "3568ac6d-638c-4f31-b6d8-a32ee2f173dc",
+      "name": "End Conversation Message",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Webhook').first().json.body.account.id }}/conversations/{{ $('Webhook').first().json.body.conversation.id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $('Intent Router').first().json.output[0].content[0].text.reasoning }}"
+            },
+            {
+              "name": "message_type",
+              "value": "outgoing"
+            },
+            {
+              "name": "private",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2128,
+        1968
+      ],
+      "id": "8767716d-e8ef-4c3f-8806-44a7ac9534b1",
+      "name": "Add Private Note",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, status, product_details, delivery_method, total_amount\nFROM orders\nWHERE client_id = $1\nAND status NOT IN ('rechazado', 'cancelado') \nORDER BY created_at DESC\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ $('Client Add or Update').item.json.id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        544,
+        1296
+      ],
+      "id": "628516bc-81d0-4feb-b465-6a32725bb957",
+      "name": "Get Active Order",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_history (client_id, sender, content)\nVALUES (\n  $1,'client',$2\n);",
+        "options": {
+          "queryReplacement": "={{ $json.sql_params }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -128,
+        1328
+      ],
+      "id": "b937eebe-fba2-40e0-b7ce-b415ba75e851",
+      "name": "Add History Client",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO orders (client_id, product_details, total_amount, status)\nVALUES ($1, $2, $3, 'validando_pedido')\nRETURNING id;",
+        "options": {
+          "queryReplacement": "={{ $json.sql_params }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3056,
+        1328
+      ],
+      "id": "2777c726-b121-489d-b985-a784686a6b84",
+      "name": "Insert Order",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=Eres el \"Auditor de Transacciones\" de Florería Aura.\nTU MISIÓN: Analizar la conversación y extraer los datos estructurados para registrar o actualizar un pedido en la Base de Datos.\n\nTUS OBJETIVOS (SEGÚN CONTEXTO):\n\n1. SI ES UN NUEVO PEDIDO (Insert):\n   - Debes rastrear en el HISTORIAL DE CHAT qué producto y qué precio se acordó.\n   - Extrae el resumen final del producto.\n   - Extrae el valor monetario total.\n\n2. SI ES LOGÍSTICA (Update):\n   - Detecta si el cliente eligió \"delivery\" (envío) o \"local\" (retiro/pasar viendo).\n\nREGLAS DE EXTRACCIÓN DE DATOS:\n- \"product_details\": Debe ser una descripción clara y concisa (Ej: \"Ramo de 8 flores amarillas + Tarjeta\"). NO incluyas saludos.\n- \"total_amount\": Solo el número decimal (Ej: 200.00). Si el precio no está claro en el chat, pon 0.00.\n- \"delivery_method\": Solo acepta valores: 'local', 'delivery' o null.\n\nFORMATO DE SALIDA JSON (Estricto para DB):\n{\n  \"sql_action\": \"INSERT\" | \"NONE\",\n  \"data\": {\n      \"product_details\": \"Texto descriptivo del ramo\",\n      \"total_amount\": 0.00,\n      \"delivery_method\": \"local\" | \"delivery\" | null\n  },\n  \"validation_message\": \"Mensaje corto confirmando qué datos encontraste (para uso interno)\"\n}"
+            },
+            {
+              "content": "=ANALIZA ESTA CONVERSACIÓN PARA EXTRAER DATOS DEL PEDIDO:\n\n--- HISTORIAL DE NEGOCIACIÓN (De aquí saca el producto y precio) ---\n{{ $('History Code').item.json.formatted_history }}\n\n--- MENSAJE ACTUAL (Confirmación o Datos de Envío) ---\n{{ $('Client Message').first().json.message }}\n--- ESTADO ACTUAL DB ---\nTiene Pedido Activo: {{ $('Get Active Order').first().json.id ? 'SI' : 'NO' }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        2336,
+        1344
+      ],
+      "id": "6a81ce51-8e30-465c-afe1-72680a4d0ff7",
+      "name": "Order Data Extractor",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "df46ce1a-84ac-4278-b49c-eab661810976",
+              "leftValue": "={{ $json.output[0].content[0].text.sql_action }}",
+              "rightValue": "INSERT",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2640,
+        1344
+      ],
+      "id": "197a3f8f-2637-45d3-b561-9c795653f925",
+      "name": "Insert Order If"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_history (client_id, sender, content)\nVALUES (\n  $1, \n  'bot',\n  $2\n);",
+        "options": {
+          "queryReplacement": "={{ $json.sql_params }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4080,
+        1328
+      ],
+      "id": "94d2f971-8657-4c86-9b86-ac3aabcd1893",
+      "name": "Add Want History",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=CONTEXTO DE ROL:\nEres Aura, la anfitriona experta de Florería Aura. Tu comunicación es sofisticada, cálida y vibrante.\nNo solo \"registras pedidos\", tú **inicias experiencias memorables**.\n\nTU OBJETIVO:\nConfirmar la creación del pedido #[ID] haciendo sentir al cliente que ha tomado una decisión excelente. Debes balancear la emoción de la compra con la seguridad transaccional.\n\nESTRUCTURA DEL MENSAJE (Diseño UX):\n\n1. EL \"HOOK\" EMOCIONAL (Apertura):\n   - Usa el nombre del cliente.\n   - Celebra la confirmación con elegancia (Ej: \"¡Maravillosas noticias!\", \"Todo está listo\").\n\n2. LA CONFIRMACIÓN (Datos Duros):\n   - Menciona el NÚMERO DE PEDIDO (Obligatorio) con negritas.\n   - Resume el producto principal de forma atractiva (\"Esas [Flores] van a lucir espectaculares\").\n   - Confirma el valor total.\n\n3. SETTING EXPECTATIONS (Siguiente Paso):\n   - Explica proactivamente qué sigue para reducir la ansiedad: \"Ahora pasaremos a la etapa de validación y preparación de tus flores 🎨\".\n\n4. CIERRE ABIERTO:\n   - \"Quedo atenta por si deseas agregar un detalle extra o tienes alguna duda.\"\n\nTONO Y ESTILO:\n- Emojis: Úsalos como decoración fina, no como spam (✨, 🌹, 📝, 🍃).\n- Formato: \nmessage: Usa párrafos cortos y espacios para que sea visualmente ligero en WhatsApp en un solo mensaje igual.\n- Vocabulario: Usa palabras como \"exquisito\", \"fresco\", \"cuidado\", \"detalle\"."
+            },
+            {
+              "content": "=DATOS CONFIRMADOS DE LA TRANSACCIÓN (Postgres):\n\n- CLIENTE: {{ $('Data Webhook').first().json.sender_fullname }}\n- ORDER ID: {{ $('Insert Order').item.json.id }}\n- PRODUCTO: {{ $('Order Data Extractor').item.json.output[0].content[0].text.data.product_details }}\n- TOTAL A PAGAR: ${{ $('Order Data Extractor').item.json.output[0].content[0].text.data.total_amount }}\nTAREA:\nGenera el mensaje de confirmación siguiendo el estándar de \"Experiencia Aura\"."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 300,
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        3600,
+        1328
+      ],
+      "id": "d24e1d3e-e2bd-4ba9-8264-fd1289968e3a",
+      "name": "Want Message",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Webhook').first().json.body.account.id }}/conversations/{{ $('Webhook').first().json.body.conversation.id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $('Want Message').item.json.output[0].content[0].text.message }}"
+            },
+            {
+              "name": "message_type",
+              "value": "outgoing"
+            },
+            {
+              "name": "private",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        4272,
+        1328
+      ],
+      "id": "41b680f5-92c4-43f9-8803-f51fad6079b1",
+      "name": "Want Send Message",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=Eres el \"Analista de Estado de Pedidos\" de Florería Aura.\nTU MISIÓN: Evaluar el estado técnico de un pedido existente y determinar la estrategia de respuesta.\n\nREGLAS DE NEGOCIO (Lógica Estricta):\n\n1. REGLA DEL TIEMPO (Antigüedad):\n   - Recibirás un dato \"hours_since_creation\".\n   - Si es MAYOR a 3.0 -> El pedido se considera \"OLVIDADO\" (Needs Reminder).\n   - Si es MENOR o IGUAL a 3.0 -> El pedido es \"RECIENTE\" (No molestar).\n\n2. REGLA DE COMPLETITUD (Delivery):\n   - Verifica el campo \"delivery_method\" de la base de datos.\n   - Si es 'null' o 'undefined' -> FALTA DATOS.\n   - Si dice 'local' o 'delivery' -> COMPLETO.\n\nSALIDA ESPERADA (JSON):\nDebes generar un JSON que guíe al redactor en el siguiente paso.\n{\n  \"order_age_status\": \"recent\" | \"old\",\n  \"missing_info\": \"none\" | \"delivery_method\",\n  \"response_strategy\": \"answer_only\" | \"ask_delivery\" | \"remind_old_order\",\n  \"reasoning\": \"Breve explicación técnica de por qué elegiste esta estrategia\"\n}\n\nTABLA DE ESTRATEGIAS:\n- Si falta delivery: \"ask_delivery\" (Prioridad Alta).\n- Si todo está completo Y es viejo (>3h): \"remind_old_order\".\n- Si todo está completo Y es reciente (<3h): \"answer_only\" (Responder duda del usuario normalmente).\n- Si \"JUST_UPDATED\" es \"YES\": La estrategia debe ser \"confirm_completion\" (Celebrar que ya tenemos todo)."
+            },
+            {
+              "content": "=ANÁLISIS DE PEDIDO ACTUAL:\n\n--- DATOS DB ---\nID Pedido: {{ $('Get Active Order').first().json.id }}\nDelivery Method: {{ $('Delivery Detector').item.json.detected_method ? $('Delivery Detector').item.json.detected_method : $('Get Active Order').first().json.delivery_method }}\n\n--- EVENTOS RECIENTES ---\n// ¿Acabamos de actualizar?\nJUST_UPDATED: {{ $('Delivery Detector').item.json.detected_method ? 'YES' : 'NO' }}\n\n--- CÁLCULO DE TIEMPO (Automático) ---\nHoras desde creación: {{ (new Date().getTime() - new Date($('Get Active Order').first().json.updated_at).getTime()) / (1000 * 60 * 60) }}\n(Nota: Si el número es > 3, aplica regla de pedido olvidado).\n\n--- CONSULTA DEL USUARIO ---\n{{ $('Client Message').first().json.message }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        3024,
+        1568
+      ],
+      "id": "09d52b4b-33e3-457e-8b48-66def64c48f8",
+      "name": "Order Data Delivery",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "df46ce1a-84ac-4278-b49c-eab661810976",
+              "leftValue": "={{ $json.output[0].content[0].text.detected_method }}",
+              "rightValue": "INSERT",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2640,
+        1584
+      ],
+      "id": "fd25dfb7-7751-48ca-b87e-738b9698eaa6",
+      "name": "Has Delivery"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE orders\nSET delivery_method = $1, updated_at = NOW()\nWHERE id = $2;",
+        "options": {
+          "queryReplacement": "={{ $('Delivery Detector').item.json.output[0].content[0].text.detected_method }}, {{ $('Get Active Order').first().json.id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2848,
+        1664
+      ],
+      "id": "5d146300-eb51-4a07-bcc2-75fd455313b5",
+      "name": "Update Order",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=Eres el \"Detector de Logística\" de Florería Aura.\nTU MISIÓN: Analizar el mensaje del usuario y extraer SIEMPRE que sea posible el método de entrega preferido.\n\nCONTEXTO: El usuario tiene un pedido pendiente que le falta definir si es \"Delivery\" o \"Retiro\".\n\nREGLAS DE EXTRACCIÓN:\n- Si menciona \"envío\", \"a domicilio\", \"mi casa\", \"llevamelo\": Salida -> \"delivery\".\n- Si menciona \"paso viendo\", \"retiro\", \"local\", \"tienda\", \"voy yo\": Salida -> \"local\".\n- Si el mensaje NO tiene nada que ver con logística (ej: \"¿Cuánto cuestan las rosas?\"): Salida -> null.\n\nFORMATO JSON:\n{\n  \"detected_method\": \"delivery\" | \"local\" | null,\n}"
+            },
+            {
+              "content": "=MENSAJE DEL CLIENTE: \"{{ $('Client Message').first().json.message }}\""
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        2336,
+        1584
+      ],
+      "id": "c19bc184-70a0-424e-ae8a-363e8178002c",
+      "name": "Delivery Detector",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=Eres Aura, la asistente experta y carismática de Florería Aura 🌸.\nTU OBJETIVO: Responder al cliente combinando su consulta actual con el estado de su pedido, siguiendo estrictamente la ESTRATEGIA DEFINIDA.\n\nESTILOS DE RESPUESTA SEGÚN LA ESTRATEGIA RECIBIDA:\n\nCASO 1: ESTRATEGIA \"ask_delivery\" (Falta Método de Envío)\n- PASO A: Responde la duda o comentario actual del usuario con naturalidad y carisma.\n- PASO B (El Puente): Usa una transición suave (\"Por cierto...\", \"Aprovechando...\", \"Para ir avanzando...\").\n- PASO C: Pregunta educadamente si prefiere \"Delivery\" 🛵 o \"Retiro en el local\" 🏪 para completar su orden #[ID].\n\nCASO 2: ESTRATEGIA \"remind_old_order\" (Pedido Olvidado > 3 horas)\n- PASO A: Responde la duda actual del usuario.\n- PASO B: Haz un recordatorio sutil y amable: \"Vi que nos quedó pendiente tu pedido #[ID] de hace un rato. ¿Te gustaría retomarlo o necesitas ayuda con eso? ⏳\"\n\nCASO 3: ESTRATEGIA \"answer_only\" (Pedido Reciente y Completo)\n- PASO ÚNICO: Responde la duda del usuario con total normalidad.\n- PROHIBICIÓN: NO menciones el pedido pendiente. Asumimos que el cliente sabe lo que hace. No seas repetitiva.\n\n... (Mantén los casos anteriores 1, 2 y 3) ...\n\nCASO 4: ESTRATEGIA \"confirm_completion\" (Acabamos de recibir el Delivery)\n- OBJETIVO: Confirmar que el dato se guardó y dar tranquilidad.\n- ESTRUCTURA:\n  1. Confirma la elección: \"¡Perfecto! Queda anotado como [Delivery/Retiro] 🛵/🏪.\"\n  2. Status Check: \"Con esto ya tenemos todos los datos de tu pedido #[ID].\"\n  3. Cierre: \"Ahora sí, procedemos a validar stock y te aviso en breve. ¿Tienes alguna otra duda mientras tanto?\"\n\n\nTONO DE VOZ:\n- Profesional pero cercano.\n- Empático: Si el cliente duda, dale seguridad.\n- Conciso: No escribas testamentos.\n\nFORMATO DE SALIDA (JSON):\n{\n  \"reply_to_user\": \"Tu mensaje redactado aquí...\"\n}"
+            },
+            {
+              "content": "=CONTEXTO PARA REDACCIÓN:\n\n--- ESTRATEGIA MAESTRA (Del Nodo Anterior) ---\nESTRATEGIA A SEGUIR: \"{{ $json.output[0].content[0].text.response_strategy }}\"\nRAZÓN: \"{{ $json.output[0].content[0].text.reasoning }}\"\n\n--- DATOS DEL PEDIDO ---\nID PEDIDO: {{ $('Get Active Order').first().json.id }}\nPRODUCTO: {{ $('Get Active Order').first().json.product_details }}\n\n--- MENSAJE DEL CLIENTE ---\n\"{{ $('Client Message').first().json.message }}\"\n\n--- HISTORIAL DEL CLIENTE ---\n{{ $('History Code').item.json.formatted_history }}\nINSTRUCCIÓN: Genera la respuesta JSON siguiendo la estrategia indicada."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        3328,
+        1568
+      ],
+      "id": "4906fd41-e288-49d0-8808-373dc37064a7",
+      "name": "Delivery Message",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_history (client_id, sender, content)\nVALUES (\n  $1, \n  'bot',\n  $2\n);",
+        "options": {
+          "queryReplacement": "={{ $json.sql_params }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3824,
+        1568
+      ],
+      "id": "843b6c95-e3cf-4830-9a8c-42a2adc9de6f",
+      "name": "Add Delivery History",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Webhook').first().json.body.account.id }}/conversations/{{ $('Webhook').first().json.body.conversation.id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $('Delivery Message').item.json.output[0].content[0].text.reply_to_user }}"
+            },
+            {
+              "name": "message_type",
+              "value": "outgoing"
+            },
+            {
+              "name": "private",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        4032,
+        1568
+      ],
+      "id": "3800a70b-c631-4d83-a2b2-6bc0bdb17744",
+      "name": "Delivery Send Message",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        320,
+        1392
+      ],
+      "id": "956f0d84-628b-41ac-9793-ecc4f10c2519",
+      "name": "End Flow"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3760,
+        992
+      ],
+      "id": "cb2610a5-25b8-4c83-8dd7-e919b60cf31c",
+      "name": "End Info Flow"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        4640,
+        1328
+      ],
+      "id": "1a8681c4-a61e-4cbf-9f66-15465f70134d",
+      "name": "End Want Flow"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        4224,
+        1568
+      ],
+      "id": "2993a703-65e4-4f84-8320-5d7ee3e9a304",
+      "name": "End Delivery Flow"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        1968
+      ],
+      "id": "ed2a90d2-d674-4bbb-98a1-f6df690e4739",
+      "name": "End Humman Intervention Flow"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -2176,
+        2080
+      ],
+      "id": "0755ab49-c9bc-4856-822c-6b0a3ba50bb5",
+      "name": "End Human Flow"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Data Webhook').first().json.account_id }}/conversations/{{ $('Data Webhook').first().json.conversation_id }}/labels",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"labels\": [\"validar_pedidos\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3248,
+        1328
+      ],
+      "id": "d084a9bd-1320-4988-a8ec-4f8d590e5d76",
+      "name": "Add Validation Order Label",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "=chat_{{ $('Data Webhook').item.json.conversation_id }}",
+        "messageData": "={{ $('Data Webhook').item.json.message }}"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -3264,
+        1504
+      ],
+      "id": "2a7f4295-86ff-4b7a-9fc3-6bf9e576aa15",
+      "name": "Store",
+      "credentials": {
+        "redis": {
+          "id": "YOUR_REDIS_CREDENTIAL_ID",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "incr",
+        "key": "=counter_{{ $('Data Webhook').item.json.conversation_id }}",
+        "expire": true,
+        "ttl": 25
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -3040,
+        1504
+      ],
+      "id": "7e75744e-cb65-445b-add4-eab7661137d6",
+      "name": "Count",
+      "credentials": {
+        "redis": {
+          "id": "YOUR_REDIS_CREDENTIAL_ID",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Data Webhook').item.json.bot_state }}",
+                    "rightValue": "on",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "14bf694d-38a3-41de-a985-1784689c7493"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f781cd46-9b84-4f23-a351-ae0f982c1c23",
+                    "leftValue": "={{ $('Data Webhook').item.json.bot_state }}",
+                    "rightValue": "off",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        112,
+        1312
+      ],
+      "id": "09eee693-7647-4d13-86c8-576c38ca371f",
+      "name": "Bot State Switch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Data Webhook').item.json.account_id }}/conversations/{{ $('Data Webhook').item.json.conversation_id }}/custom_attributes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"custom_attributes\": {\n    \"bot_state\": \"on\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        320,
+        1520
+      ],
+      "id": "c9fe7bf8-1b3b-4bba-ad41-d44fa3074d20",
+      "name": "Change Bot State Null",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "652d5d60-d4a3-407d-94ba-f2759a6eeceb",
+              "name": "sql_params",
+              "value": "={{ [    $('Client Add or Update').item.json.id,    $('Client Message').item.json.message ] }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -352,
+        1328
+      ],
+      "id": "b5d8f047-e74b-499e-bf24-6ec9a9392df5",
+      "name": "Array Message Client"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "652d5d60-d4a3-407d-94ba-f2759a6eeceb",
+              "name": "sql_params",
+              "value": "={{ [    $('Client Add or Update').first().json.id,   $json.output[0].content[0].text.message  ] }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3216,
+        992
+      ],
+      "id": "b773dfb7-77b6-4a98-a72e-59eecbc067b8",
+      "name": "Array Message Info"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "652d5d60-d4a3-407d-94ba-f2759a6eeceb",
+              "name": "sql_params",
+              "value": "={{ [    $('Client Add or Update').first().json.id,   $json.output[0].content[0].text.message  ] }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3904,
+        1328
+      ],
+      "id": "9687924a-6faf-4558-a617-3e4f7cd05035",
+      "name": "Array Message Want"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "652d5d60-d4a3-407d-94ba-f2759a6eeceb",
+              "name": "sql_params",
+              "value": "={{ [    $('Client Add or Update').first().json.id,   $json.output[0].content[0].text.reply_to_user  ] }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3632,
+        1568
+      ],
+      "id": "2186fe12-532b-4293-80a0-ca454ce5df42",
+      "name": "Array Message Delivery"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Data Webhook').first().json.account_id }}/conversations/{{ $('Data Webhook').first().json.conversation_id }}/custom_attributes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"custom_attributes\": {\n    \"bot_state\": \"on\",\n    \"estado_pedido\": \"Validando\"\n  }\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3440,
+        1328
+      ],
+      "id": "e4620656-5636-4352-9b9f-206f97c485c4",
+      "name": "Change Validation State",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# Fase 1\n\n",
+        "height": 336,
+        "width": 800,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -4144,
+        1776
+      ],
+      "typeVersion": 1,
+      "id": "d9bf08fc-ffca-4ff9-9dc5-763d20b3e35c",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Fase 2B\n\n",
+        "height": 352,
+        "width": 1344,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3280,
+        1968
+      ],
+      "typeVersion": 1,
+      "id": "13f6523e-8d02-4f3a-801f-7e7f3088b101",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Fase 2A\n",
+        "height": 544,
+        "width": 2656,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3328,
+        1120
+      ],
+      "typeVersion": 1,
+      "id": "a6b6f1e1-00c6-4558-a054-e1b9c985c0bf",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Fase 3",
+        "height": 544,
+        "width": 640,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -624,
+        1120
+      ],
+      "typeVersion": 1,
+      "id": "b95363df-2232-4127-83c6-b574f1430833",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## Fase 4\n",
+        "height": 544,
+        "width": 448,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        48,
+        1120
+      ],
+      "typeVersion": 1,
+      "id": "c4358bc5-866a-4719-bb32-ee8c335b0cca",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "## Fase 5\n",
+        "height": 544,
+        "width": 1152,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        528,
+        1120
+      ],
+      "typeVersion": 1,
+      "id": "1cc5c772-5ac9-490c-8de4-581a16b544a4",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=\nCONTEXTO DE ROL:\nEres Aura, la anfitriona experta de Florería Aura. Tu comunicación es sofisticada, cálida y vibrante.\n\n\nTU OBJETIVO:\nResponder MUY brevemente cuando el cliente haya pedido algo sin sentido o algo que se no esta a tu alcance, Alizando las razones y la intencion del usuario.\n\n\nTONO Y ESTILO:\n- Emojis: Úsalos como decoración fina, no como spam (✨, 🌹, 📝, 🍃).\n- Formato: \nmessage: Usa párrafos cortos y espacios para que sea visualmente ligero en WhatsApp en un solo mensaje igual.\n\nResponse siempre con MESSAGE en minuscula asi: message\n"
+            },
+            {
+              "content": "=\nDATOS (Postgres):\n- CLIENTE: {{ $('Data Webhook').first().json.sender_fullname }}\n- REASONING:  {{ $json.output[0].content[0].text.reasoning }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 300,
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        2064,
+        688
+      ],
+      "id": "f3d969f1-1cd0-4eb1-98f6-9f010348f5a7",
+      "name": "Dont Message",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "652d5d60-d4a3-407d-94ba-f2759a6eeceb",
+              "name": "sql_params",
+              "value": "={{ [    $('Client Add or Update').first().json.id,   $json.output[0].content[0].text.message  ] }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2368,
+        688
+      ],
+      "id": "2f95f540-59dc-450b-ae77-b67074b7a05d",
+      "name": "Array Message Dont"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Webhook').first().json.body.account.id }}/conversations/{{ $('Webhook').first().json.body.conversation.id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $('Dont Message').item.json.output[0].content[0].text.message }}"
+            },
+            {
+              "name": "message_type",
+              "value": "outgoing"
+            },
+            {
+              "name": "private",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2736,
+        688
+      ],
+      "id": "52074193-6649-49ae-80d3-1acc2254e753",
+      "name": "Dont Send Message",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2912,
+        688
+      ],
+      "id": "cab9e288-01d3-49cd-8a7b-c462ade2cc6b",
+      "name": "End Dont Flow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_history (client_id, sender, content)\nVALUES (\n  $1, \n  'bot',\n  $2\n);",
+        "options": {
+          "queryReplacement": "={{ $json.sql_params }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2544,
+        688
+      ],
+      "id": "f05701d3-ebdd-4188-bcfa-5af25d621283",
+      "name": "Add Dont History",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "acca8848-98b9-4d56-bb30-145aaa652584",
+              "name": "account_id",
+              "value": "={{ $('Webhook').item.json.body.account.id }} ",
+              "type": "number"
+            },
+            {
+              "id": "34a10650-2ef4-4ba6-bab4-56e14758be5c",
+              "name": "conversation_id",
+              "value": "={{ $('Webhook').item.json.body.conversation.id }}",
+              "type": "number"
+            },
+            {
+              "id": "a66a282f-db98-410e-b4aa-73e9fba0ee9e",
+              "name": "message",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].content\n}}",
+              "type": "string"
+            },
+            {
+              "id": "1a3a5919-8034-4a81-a594-6e09b3d5b2cc",
+              "name": "message_type",
+              "value": "={{ $('Webhook').item.json.body.message_type }}",
+              "type": "string"
+            },
+            {
+              "id": "d628081f-1669-4700-9bac-46edad645a0f",
+              "name": "content_type",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].content_type }}",
+              "type": "string"
+            },
+            {
+              "id": "509fe45e-09d3-4479-885f-4f8507830b75",
+              "name": "sender_number",
+              "value": "={{ $('Webhook').item.json.body.conversation.meta.sender.phone_number }}",
+              "type": "string"
+            },
+            {
+              "id": "3b3c6510-e792-4e2d-8308-c2c8ac8848d5",
+              "name": "sender_firstname",
+              "value": "={{ $('Webhook').item.json.body.sender.name.split(\" \")[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "8213d8c4-2574-4b18-b2dc-cf25fea55b18",
+              "name": "sender_lastname",
+              "value": "={{ $('Webhook').item.json.body.sender.name.split(\" \")[1] }}",
+              "type": "string"
+            },
+            {
+              "id": "c426674c-e001-4f37-bb57-02d59946b50c",
+              "name": "sender_fullname",
+              "value": "={{ $('Webhook').item.json.body.sender.name}}",
+              "type": "string"
+            },
+            {
+              "id": "bf4beb72-aa5a-49a5-b4f5-2563e751ee30",
+              "name": "sender_id",
+              "value": "={{ $('Webhook').item.json.body.sender.id }}",
+              "type": "number"
+            },
+            {
+              "id": "eb80f807-7bd2-4e61-9608-cdf570e04bfe",
+              "name": "attributes",
+              "value": "={{ $('Webhook').item.json.body.conversation.custom_attributes}}",
+              "type": "object"
+            },
+            {
+              "id": "b0be6b5a-1655-4d90-9071-1783cfeb5867",
+              "name": "bot_state",
+              "value": "={{ $('Webhook').item.json.body.conversation.custom_attributes.bot_state }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -3648,
+        1856
+      ],
+      "id": "90857fe6-7086-4690-a029-1a91794796aa",
+      "name": "Data Webhook"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message_type }}",
+                    "rightValue": "incoming",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e9ac03b5-77ce-4545-860c-37a32d22c113"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6b75940c-db52-4e7e-9a7b-429ff7f4e14c",
+                    "leftValue": "={{ $json.message_type === 'outgoing' && $json.sender_fullname!== 'Aura Agent'}}",
+                    "rightValue": "outgoing",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -3488,
+        1872
+      ],
+      "id": "e092d46b-35d9-45ed-bf0d-4d87741d6d2c",
+      "name": "Message Entry"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Data Webhook').item.json.account_id }}/conversations/{{ $('Data Webhook').item.json.conversation_id }}/custom_attributes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"custom_attributes\": {\n    \"bot_state\": \"off\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -2624,
+        2080
+      ],
+      "id": "6ba95d58-86c6-4750-8bb2-194ecae4d1b0",
+      "name": "Change Bot State Off",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "de69235c-bae4-4140-b47f-aff3a24b4be6",
+              "leftValue": "={{ $json.values()[0] }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2816,
+        1504
+      ],
+      "id": "5b181a15-0171-44f4-9dee-04ac85f31e7e",
+      "name": "Check_First_Message"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -2592,
+        1520
+      ],
+      "id": "5e64a9d3-b2d4-44d5-990b-be641cb537ac",
+      "name": "Nothing"
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "=timestamp_{{ $('Data Webhook').item.json.conversation_id }}",
+        "value": "={{ $now.toSeconds() }}",
+        "keyType": "string",
+        "expire": true,
+        "ttl": 25
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -2592,
+        1328
+      ],
+      "id": "5191af73-56b2-45ec-9c89-8ee8ac6b2ac9",
+      "name": "Timestamp",
+      "credentials": {
+        "redis": {
+          "id": "YOUR_REDIS_CREDENTIAL_ID",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -2368,
+        1328
+      ],
+      "id": "b0e6e67f-1c70-4835-9506-02aa3a5cef9e",
+      "name": "Wait",
+      "webhookId": "wait-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "timestamp",
+        "key": "=timestamp_{{ $('Data Webhook').item.json.conversation_id }}",
+        "keyType": "string",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -2144,
+        1184
+      ],
+      "id": "3d97d52f-a1d6-4ee4-858b-3ff2ebb8ff10",
+      "name": "Get_Timestamp",
+      "credentials": {
+        "redis": {
+          "id": "YOUR_REDIS_CREDENTIAL_ID",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "32ce777d-b762-4635-9618-c772bac2337b",
+              "leftValue": "={{ $json.timestamp.toNumber() + 10 }}",
+              "rightValue": "={{ $now.toSeconds() }}",
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1920,
+        1328
+      ],
+      "id": "9444e5e3-5c57-4b67-9b64-7f7430d65471",
+      "name": "Check_Delay"
+    },
+    {
+      "parameters": {
+        "operation": "pop",
+        "list": "=chat_{{ $('Data Webhook').item.json.conversation_id }}",
+        "tail": true,
+        "propertyName": "text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -1696,
+        1328
+      ],
+      "id": "78c97117-1612-447d-9227-db682b9ed533",
+      "name": "Extract",
+      "alwaysOutputData": true,
+      "credentials": {
+        "redis": {
+          "id": "YOUR_REDIS_CREDENTIAL_ID",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "=message_{{ $('Data Webhook').item.json.conversation_id }}",
+        "value": "={{ $json.message ? $json.message : \"\" }}{{ $('Extract').first().json.text }}\n",
+        "keyType": "string",
+        "expire": true,
+        "ttl": 5
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -1248,
+        1184
+      ],
+      "id": "d0412944-e9e7-4523-878f-76c574189154",
+      "name": "Set_Message",
+      "credentials": {
+        "redis": {
+          "id": "YOUR_REDIS_CREDENTIAL_ID",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "message",
+        "key": "=message_{{ $('Data Webhook').item.json.conversation_id }}",
+        "keyType": "string",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -1472,
+        1184
+      ],
+      "id": "e916ce4a-7d55-4f9a-8ab6-a63b2e2babb5",
+      "name": "Get_Message",
+      "credentials": {
+        "redis": {
+          "id": "YOUR_REDIS_CREDENTIAL_ID",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "db8d3308-4158-423c-817e-b55786bc13ca",
+              "leftValue": "={{ $('Extract').first().json.text }}",
+              "rightValue": "={{ $json.values()[0] }}",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1024,
+        1328
+      ],
+      "id": "b834ed8e-d927-4c9c-b5bf-29553a82da8d",
+      "name": "Check_Queue_Is_Empty"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO clients (phone_number, first_name, last_name)\nVALUES ($1, $2, $3)\nON CONFLICT (phone_number) DO UPDATE\nSET \n    first_name = EXCLUDED.first_name,\n    last_name = EXCLUDED.last_name\nRETURNING id;",
+        "options": {
+          "queryReplacement": "={{ $('Data Webhook').item.json.sender_number }},{{ $('Data Webhook').item.json.sender_firstname }},{{ $('Data Webhook').item.json.sender_lastname }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -576,
+        1328
+      ],
+      "id": "fd403de6-ce59-4b67-af8d-13ef2867c58e",
+      "name": "Client Add or Update",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Formatear Historial (De más viejo a más nuevo para que la IA entienda el hilo)\nconst historyItems = $('Read History').all();\nlet chatString = \"\";\n\n// Invertimos el orden porque SQL trajo el más nuevo primero (DESC)\nfor (let i = historyItems.length - 1; i >= 0; i--) {\n    const item = historyItems[i].json;\n    const role = item.sender === 'client' ? 'Usuario' : 'Aura (Bot)';\n    chatString += `${role}: ${item.content}\\n`;\n}\n\n// 2. Formatear Pedido Activo\nconst orderData = $('Get Active Order').first().json;\nlet orderContext = \"NO hay pedido activo. El cliente está explorando.\";\n\n// Si la query de orden no está vacía (tiene ID)\nif (orderData && orderData.id) {\n    orderContext = `PEDIDO ACTIVO ENCONTRADO:\\n- ID: ${orderData.id}\\n- Estado: ${orderData.status}\\n- Producto: ${orderData.product_details}\\n- Método Entrega: ${orderData.delivery_method || 'Por definir'}`;\n}\n\nreturn {\n    json: {\n        formatted_history: chatString,\n        formatted_order: orderContext,\n        client_message: $('Data Webhook').first().json.message\n    }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        1296
+      ],
+      "id": "8406e024-b034-49a2-a1cc-b9723fc43777",
+      "name": "History Code"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b594f1da-51e8-47a4-a636-7928a73b69f8",
+              "name": "message",
+              "value": "={{ $json.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -800,
+        1328
+      ],
+      "id": "ed633ec1-3b8b-40dd-8d44-7508b3ac5778",
+      "name": "Client Message"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "652d5d60-d4a3-407d-94ba-f2759a6eeceb",
+              "name": "sql_params",
+              "value": "={{ [    $('Client Add or Update').first().json.id, $json.output[0].content[0].text.data.product_details, $json.output[0].content[0].text.data.total_amount] }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2864,
+        1328
+      ],
+      "id": "e0c654f2-fba2-4b99-b7d3-eb25854f93dd",
+      "name": "Array Message Want Step"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_CHATWOOT_DOMAIN/api/v1/accounts/{{ $('Webhook').first().json.body.account.id }}/conversations/{{ $('Webhook').first().json.body.conversation.id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "=🌸 NUEVO PEDIDO 🌸\n\n🧾 N° de pedido:\n{{ $('Insert Order').item.json.id }}\n\n📦 Detalle del pedido:\n{{ $('Order Data Extractor').item.json.output[0].content[0].text.data.product_details }}\n\n💰 Total a cobrar:\n${{ $('Order Data Extractor').item.json.output[0].content[0].text.data.total_amount }}\n"
+            },
+            {
+              "name": "message_type",
+              "value": "outgoing"
+            },
+            {
+              "name": "private",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        4464,
+        1328
+      ],
+      "id": "20cddcad-fce1-4e2b-8e12-c7665aeaa588",
+      "name": "Add Private Want Note",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CHATWOOT_CREDENTIAL_ID",
+          "name": "Chatwood Aura Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "652d5d60-d4a3-407d-94ba-f2759a6eeceb",
+              "name": "sql_params",
+              "value": "={{ [ $json.id, $('Message Entry').item.json.message ] }} ",
+              "type": "array"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {
+          "ignoreConversionErrors": true
+        }
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -3024,
+        2080
+      ],
+      "id": "1b548292-bd3c-4a4b-ab4e-515319ff213d",
+      "name": "Array History User"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Event Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read History": {
+      "main": [
+        [
+          {
+            "node": "History Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event Filter": {
+      "main": [
+        [
+          {
+            "node": "Data Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Add History User": {
+      "main": [
+        [
+          {
+            "node": "Change Bot State Off",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Info AI",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Info AI",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Owner Add or update Client": {
+      "main": [
+        [
+          {
+            "node": "Array History User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Brain": {
+      "main": [
+        [
+          {
+            "node": "Intent Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intent Router": {
+      "main": [
+        [
+          {
+            "node": "Dont Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Info AI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Order Exists",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "End Conversation Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Order Exists": {
+      "main": [
+        [
+          {
+            "node": "Order Data Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delivery Detector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Change Bot State": {
+      "main": [
+        [
+          {
+            "node": "Add Label Immediate Attention",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Aura Info": {
+      "ai_tool": [
+        [
+          {
+            "node": "Info AI",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Aura Data": {
+      "ai_tool": [
+        [
+          {
+            "node": "Info AI",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Info Message": {
+      "main": [
+        [
+          {
+            "node": "Array Message Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Info AI": {
+      "main": [
+        [
+          {
+            "node": "Info Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Info Add History Bot": {
+      "main": [
+        [
+          {
+            "node": "Info Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "End Conversation Message": {
+      "main": [
+        [
+          {
+            "node": "Add Private Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Private Note": {
+      "main": [
+        [
+          {
+            "node": "Change Bot State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Order": {
+      "main": [
+        [
+          {
+            "node": "Read History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add History Client": {
+      "main": [
+        [
+          {
+            "node": "Bot State Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order Data Extractor": {
+      "main": [
+        [
+          {
+            "node": "Insert Order If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Order If": {
+      "main": [
+        [
+          {
+            "node": "Array Message Want Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Order": {
+      "main": [
+        [
+          {
+            "node": "Add Validation Order Label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Want History": {
+      "main": [
+        [
+          {
+            "node": "Want Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Want Message": {
+      "main": [
+        [
+          {
+            "node": "Array Message Want",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order Data Delivery": {
+      "main": [
+        [
+          {
+            "node": "Delivery Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Delivery": {
+      "main": [
+        [
+          {
+            "node": "Order Data Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delivery Detector": {
+      "main": [
+        [
+          {
+            "node": "Has Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delivery Message": {
+      "main": [
+        [
+          {
+            "node": "Array Message Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Order": {
+      "main": [
+        [
+          {
+            "node": "Order Data Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Delivery History": {
+      "main": [
+        [
+          {
+            "node": "Delivery Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Want Send Message": {
+      "main": [
+        [
+          {
+            "node": "Add Private Want Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Info Send Message": {
+      "main": [
+        [
+          {
+            "node": "End Info Flow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delivery Send Message": {
+      "main": [
+        [
+          {
+            "node": "End Delivery Flow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Label Immediate Attention": {
+      "main": [
+        [
+          {
+            "node": "End Humman Intervention Flow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Label Bot OFF": {
+      "main": [
+        [
+          {
+            "node": "End Human Flow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Validation Order Label": {
+      "main": [
+        [
+          {
+            "node": "Change Validation State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store": {
+      "main": [
+        [
+          {
+            "node": "Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count": {
+      "main": [
+        [
+          {
+            "node": "Check_First_Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bot State Switch": {
+      "main": [
+        [
+          {
+            "node": "Get Active Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "End Flow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Change Bot State Null",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Change Bot State Null": {
+      "main": [
+        [
+          {
+            "node": "Get Active Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Array Message Client": {
+      "main": [
+        [
+          {
+            "node": "Add History Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Array Message Info": {
+      "main": [
+        [
+          {
+            "node": "Info Add History Bot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Array Message Want": {
+      "main": [
+        [
+          {
+            "node": "Add Want History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Array Message Delivery": {
+      "main": [
+        [
+          {
+            "node": "Add Delivery History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Change Validation State": {
+      "main": [
+        [
+          {
+            "node": "Want Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dont Message": {
+      "main": [
+        [
+          {
+            "node": "Array Message Dont",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Array Message Dont": {
+      "main": [
+        [
+          {
+            "node": "Add Dont History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dont Send Message": {
+      "main": [
+        [
+          {
+            "node": "End Dont Flow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Dont History": {
+      "main": [
+        [
+          {
+            "node": "Dont Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Webhook": {
+      "main": [
+        [
+          {
+            "node": "Message Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message Entry": {
+      "main": [
+        [
+          {
+            "node": "Store",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Owner Add or update Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Change Bot State Off": {
+      "main": [
+        [
+          {
+            "node": "Add Label Bot OFF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check_First_Message": {
+      "main": [
+        [
+          {
+            "node": "Timestamp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Timestamp": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Get_Timestamp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Timestamp": {
+      "main": [
+        [
+          {
+            "node": "Check_Delay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check_Delay": {
+      "main": [
+        [
+          {
+            "node": "Extract",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract": {
+      "main": [
+        [
+          {
+            "node": "Get_Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set_Message": {
+      "main": [
+        [
+          {
+            "node": "Check_Queue_Is_Empty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Message": {
+      "main": [
+        [
+          {
+            "node": "Set_Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check_Queue_Is_Empty": {
+      "main": [
+        [
+          {
+            "node": "Client Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Add or Update": {
+      "main": [
+        [
+          {
+            "node": "Array Message Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "History Code": {
+      "main": [
+        [
+          {
+            "node": "AI Brain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Message": {
+      "main": [
+        [
+          {
+            "node": "Client Add or Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Array Message Want Step": {
+      "main": [
+        [
+          {
+            "node": "Insert Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Private Want Note": {
+      "main": [
+        [
+          {
+            "node": "End Want Flow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Array History User": {
+      "main": [
+        [
+          {
+            "node": "Add History User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "060fffea-c156-49f5-8e7f-3a1d05bfcca8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "id": "tVo5Dfz7jmwbpawW",
+  "tags": []
+}
