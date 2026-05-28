@@ -116,7 +116,7 @@ CREATE TABLE chat_history (
 
 ## 🚀 Cómo importar el flujo
 
-1. Descarga el archivo `Aura-bot.json`
+1. Descarga el archivo `aura-bot.json`
 2. En tu instancia de n8n: **Workflows → Import from file**
 3. Selecciona el archivo descargado
 4. Configura las credenciales (ver sección siguiente)
@@ -179,10 +179,4 @@ El sheet debe tener al menos estas hojas:
 
 ---
 
-## 📜 Licencia
-
-MIT — libre para uso personal y comercial.
-
----
-
-<p align="center">Hecho con 🌹 para florerías que quieren automatizar su atención al cliente</p>
+<p align="center">Muchas gracias por avanzar y llegar hasta aqui🤓</p>
