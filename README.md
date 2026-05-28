@@ -1,4 +1,4 @@
-# 🌹 Aura Bot — Agente de IA para Florería en WhatsApp
+# Aura Bot — Agente de IA para Florería en WhatsApp
 
 > Flujo de n8n que convierte tu Chatwoot + WhatsApp en un agente de ventas inteligente, capaz de cotizar, registrar pedidos y derivar al humano cuando es necesario.
 
@@ -179,4 +179,4 @@ El sheet debe tener al menos estas hojas:
 
 ---
 
-<p align="center">Muchas gracias por avanzar y llegar hasta aqui🤓</p>
+<p align="center">Muchas gracias por avanzar y llegar hasta aquí 🤓</p>
